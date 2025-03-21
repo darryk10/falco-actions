@@ -69,19 +69,47 @@ inputs:
 runs:
   using: 'composite'
   steps:
-  - name: Download capture
-    uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
-    with:
-      name: capture
-      path: /tmp
+  - name: Retrieve artifacts
+    shell: bash
+    env:
+      RUN_ID: ${{ github.run_id }}
+      REPO: ${{ github.repository }}
+      GITHUB_TOKEN: ${{ github.token }}
+      VERBOSE: ${{ inputs.verbose }}
+    run: |
+      echo "Downloading artifacts"
+      ARTIFACTS_JSON=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+        -H "Accept: application/vnd.github.v3+json" \
+        "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID/artifacts")
 
-  - name: Download hashes
-    if: ${{ inputs.extract-hashes == 'true' }}
-    uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
-    with:
-      name: hashes
-      path: /tmp
-  
+      echo "$ARTIFACTS_JSON" | jq -r '.artifacts[] | "\(.name) \(.archive_download_url)"' | while read -r NAME URL; do
+        echo "Downloading artifact: $NAME..."
+    
+        # Download the artifact
+        curl -L -H "Authorization: Bearer $GITHUB_TOKEN" -o "/tmp/${NAME}.zip" "$URL"
+        echo "Downloaded: /tmp/${NAME}.zip"
+        
+        unzip -o "/tmp/${NAME}.zip" -d "/tmp/${NAME}"
+        echo "Unzipped /tmp/${NAME}.zip to /tmp/${NAME}"
+      done
+
+      # Merge all hashes.txt files into /tmp/hash if any exist
+      if ls /tmp/hashes*/hashes.txt 1>/dev/null 2>&1; then
+        cat /tmp/hashes*/hashes.txt > /tmp/hashes.txt
+      else
+        echo "No different hashes files found, skipping."
+      fi
+
+      # Merge all capture.scap files into /tmp/capture if any exist
+      if ls /tmp/capture*/capture.scap 1>/dev/null 2>&1; then
+        cat /tmp/capture*/capture.scap > /tmp/capture.scap
+      else
+        echo "No different capture files found, skipping."
+      fi
+
+      ls -la /tmp
+
+
   - name: Start Falco in capture mode
     shell: bash
     env:

@@ -32,6 +32,20 @@ runs:
           docker stop $(docker ps -q --filter name='^falco$' --filter name='^sysdig$')
       fi
   
+  - name: Retrive matrix info
+    id: check_matrix
+    shell: bash
+    run: |
+      MATRIX_JSON="${{ toJson(matrix) }}"
+      if [[ "$MATRIX_JSON" == "{}" || "$MATRIX_JSON" == "null" ]]; then
+        echo "Matrix is empty!"
+      else
+        echo "Matrix is not empty!"
+        FILE_NAME="_$(echo "${MATRIX_JSON}" | tr -d '\n' | tr -d '{}":,' | tr -d '[:space:]')"
+        echo "filename=$FILE_NAME"
+        echo "filename=$FILE_NAME" >> "$GITHUB_OUTPUT"
+      fi
+
   - name: Retrieve Job Info using GitHub API
     shell: bash
     if: ${{ inputs.mode == 'live' }}
@@ -62,6 +76,8 @@ runs:
         cat steps.json
       fi
       mv steps.json /tmp/steps.json
+
+      echo '${{ toJson(matrix) }}'
 
   - name: Build Live Summary
     if: ${{ inputs.mode == 'live' }}
@@ -95,7 +111,7 @@ runs:
     if: ${{ inputs.mode == 'analyze' }}
     uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
     with:
-      name: capture
+      name: capture${{ steps.check_matrix.outputs.filename }}
       path: /tmp/capture.scap
 
   - name: Extract executables' hash
@@ -128,5 +144,5 @@ runs:
     if: ${{ inputs.mode == 'analyze' }}
     uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
     with:
-      name: hashes
+      name: hashes${{ steps.check_matrix.outputs.filename }}
       path: /tmp/hashes.txt
